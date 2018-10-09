@@ -6,6 +6,9 @@ import (
 
 // ParseASDU 解析asdu
 func ParseASDU(asdu []byte) (ASDU, error) {
+	if asdu == nil || len(asdu) < 4 {
+		return ASDU{}, fmt.Errorf("asdu[%X]非法", asdu)
+	}
 	dui, err := parseDUI(asdu)
 	if err != nil {
 		return ASDU{}, fmt.Errorf("解析asdu[% X]的DUI异常: %v", asdu, err)
