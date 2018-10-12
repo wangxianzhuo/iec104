@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	ApciLen = 6
+	ApciLen = 4
 )
 
 type APDU struct {
@@ -15,8 +15,8 @@ type APDU struct {
 	ASDU     elements.ASDU
 	Len      int
 	ASDULen  int
-	ctrType  byte
-	ctrFrame interface{}
+	CtrType  byte
+	CtrFrame interface{}
 }
 
 func NewAPDU(apci APCI, asdu *elements.ASDU) (APDU, error) {
@@ -35,8 +35,8 @@ func NewAPDU(apci APCI, asdu *elements.ASDU) (APDU, error) {
 		ASDU:     *asdu,
 		Len:      ApciLen + asduLen,
 		ASDULen:  asduLen,
-		ctrType:  t,
-		ctrFrame: f,
+		CtrType:  t,
+		CtrFrame: f,
 	}, nil
 }
 
@@ -81,8 +81,8 @@ func ParseAPDU(input []byte) (APDU, error) {
 		ASDU:     asdu,
 		Len:      apci.ApduLen,
 		ASDULen:  asduLen,
-		ctrType:  fType,
-		ctrFrame: ctrFrame,
+		CtrType:  fType,
+		CtrFrame: ctrFrame,
 	}, nil
 }
 
