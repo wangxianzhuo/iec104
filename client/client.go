@@ -14,9 +14,14 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const (
-	connectDeadline = 5 * time.Minute
+var (
+	connectDeadline time.Duration
 )
+
+// SetConnectDeadLine 修改默认连接超时时间
+func SetConnectDeadLine(d time.Duration) {
+	connectDeadline = d
+}
 
 // Client IEC104客户端
 type Client struct {
@@ -30,12 +35,17 @@ type Client struct {
 	mux      *sync.Mutex
 }
 
-// NewClient ...
-func NewClient(address string, outChan chan map[string]float32, logger *logrus.Entry) (Client, context.CancelFunc, error) {
+// New ...
+func New(address string, outChan chan map[string]float32, logger *logrus.Entry) (Client, context.CancelFunc, error) {
+	if logger == nil {
+		panic("logrus.Entry is nil")
+	}
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		return Client{}, nil, fmt.Errorf("创建TCP连接异常: %v", err)
 	}
+
+	connectDeadline = 5 * time.Minute
 
 	ctx, cancel := context.WithCancel(context.Background())
 	return Client{
@@ -46,6 +56,7 @@ func NewClient(address string, outChan chan map[string]float32, logger *logrus.E
 		ctx:      ctx,
 		cancel:   cancel,
 		Log:      logger,
+		mux:      new(sync.Mutex),
 	}, cancel, nil
 }
 
@@ -72,7 +83,7 @@ func (c Client) Start(testInterval time.Duration) {
 
 func (c Client) connectionTest(testInterval time.Duration) {
 	defer c.cancel()
-	c.Log.Infof("IEC104连接测试启动，每%v执行一次连接测试", testInterval*time.Second)
+	c.Log.Infof("IEC104连接测试启动，每%v执行一次连接测试", testInterval)
 	ticker := time.NewTicker(testInterval)
 LOOP:
 	for {
@@ -81,18 +92,19 @@ LOOP:
 			err := c.test()
 			if err != nil {
 				c.Log.Errorf("连接测试失败: %v", err)
-			}
-			for i := 0; i < 5; i++ {
-				err := c.reconnect()
-				if err != nil {
-					c.Log.Errorf("重连失败: %v", err)
-				} else {
-					continue LOOP
+				c.Log.Errorf("尝试重新连接")
+				for i := 0; i < 5; i++ {
+					err := c.reconnect()
+					if err != nil {
+						c.Log.Errorf("第%d次重连失败: %v", i, err)
+					} else {
+						continue LOOP
+					}
 				}
+				c.Log.Errorf("结束通讯")
+				c.cancel()
+				return
 			}
-			c.Log.Errorf("结束通讯")
-			c.cancel()
-			return
 		case <-c.ctx.Done():
 			c.Log.Info("IEC104连接测试停止")
 		}
@@ -262,9 +274,20 @@ func (c Client) totalCall() error {
 			return fmt.Errorf("解析APDU异常: %v", err)
 		}
 
-		switch resp.CtrFrame.(type) {
+		switch f := resp.CtrFrame.(type) {
 		case iec104.IFrame:
 			if resp.ASDU.DUI.TypeIdentification == elements.C_IC_NA_1 && resp.ASDU.DUI.Cause == elements.COT_ACTCON {
+				// 这里可能会有异常
+				sFrame := iec104.SFrame{
+					Recv: f.Send + 1,
+				}
+				apci, _ := iec104.NewAPCI(iec104.ApciLen, sFrame)
+				resp, _ := iec104.NewAPDU(apci, nil)
+				_, err = c.conn.Write(resp.ConvertBytes())
+				if err != nil {
+					return fmt.Errorf("响应S帧[%v]异常: %v", resp, err)
+				}
+				c.Log.Debugf("响应S帧[%X]", resp.ConvertBytes())
 				return nil
 			} else {
 				c.dataChan <- resp
@@ -298,6 +321,7 @@ func (c Client) uFrameResp() {
 					c.Log.Errorf("响应U帧[%v]异常: %v", apdu, err)
 					continue
 				}
+				c.Log.Debugf("响应U帧[%v]", resp)
 			} else if uFrame.STOPDT_ACT {
 				uFrame.STOPDT_ACT = false
 				uFrame.STOPDT_CON = true
@@ -308,6 +332,7 @@ func (c Client) uFrameResp() {
 					c.Log.Errorf("响应U帧[%v]异常: %v", apdu, err)
 					continue
 				}
+				c.Log.Debugf("响应U帧[%v]", resp)
 			} else if uFrame.TESTFR_ACT {
 				uFrame.TESTFR_ACT = false
 				uFrame.TESTFR_CON = true
@@ -318,6 +343,9 @@ func (c Client) uFrameResp() {
 					c.Log.Errorf("响应U帧[%v]异常: %v", apdu, err)
 					continue
 				}
+				c.Log.Debugf("响应U帧[%v]", resp)
+			} else {
+				c.Log.Debugf("U帧无需响应")
 			}
 		}
 	}
@@ -386,6 +414,7 @@ func (c Client) writeUFrame(apdu iec104.APDU) (iec104.APDU, error) {
 		return iec104.APDU{}, err
 	}
 
+	c.Log.Debugf("发送: [%X]", apdu.ConvertBytes())
 	for {
 
 		buf := make([]byte, 1024)

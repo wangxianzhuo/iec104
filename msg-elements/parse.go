@@ -11,7 +11,7 @@ func ParseASDU(asdu []byte) (ASDU, error) {
 	}
 	dui, err := parseDUI(asdu)
 	if err != nil {
-		return ASDU{}, fmt.Errorf("解析asdu[% X]的DUI异常: %v", asdu, err)
+		return ASDU{}, fmt.Errorf("解析asdu[%X]的DUI异常: %v", asdu, err)
 	}
 
 	var messageBody BytesConverter
@@ -20,7 +20,7 @@ func ParseASDU(asdu []byte) (ASDU, error) {
 		var err error
 		messageBody, err = parseM_ME_NC_1(asdu, dui)
 		if err != nil {
-			return ASDU{}, fmt.Errorf("解析asdu[% X]的messageBody异常: %v", asdu, err)
+			return ASDU{}, fmt.Errorf("解析asdu[%X]的messageBody异常: %v", asdu, err)
 		}
 	case C_IC_NA_1:
 		messageBody = parseC_IC_NA_1(asdu)
@@ -55,6 +55,8 @@ func parseDUI(asdu []byte) (DUI, error) {
 func parseDUITypeIdentification(t byte) (byte, error) {
 	switch t {
 	case M_ME_NC_1:
+		return t, nil
+	case C_IC_NA_1:
 		return t, nil
 	default:
 		return 0x00, fmt.Errorf("未知类型标识[%X]", t)

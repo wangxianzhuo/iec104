@@ -45,7 +45,12 @@ type UFrame struct {
 }
 
 func ParseCtr(apci APCI) (byte, interface{}, error) {
-	frameType := apci.Ctr1 & 0x03
+	var frameType byte
+	if apci.Ctr1&0x01 == 0 {
+		frameType = 0
+	} else {
+		frameType = apci.Ctr1 & 0x03
+	}
 	switch frameType {
 	case 0:
 		t, f := parseIFrame(apci)

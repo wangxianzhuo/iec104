@@ -19,12 +19,14 @@ type APDU struct {
 	CtrFrame interface{}
 }
 
-func NewAPDU(apci APCI, asdu *elements.ASDU) (APDU, error) {
+func NewAPDU(apci APCI, asdup *elements.ASDU) (APDU, error) {
 	var asduLen int
-	if asdu == nil {
+	var asdu elements.ASDU
+	if asdup == nil {
 		asduLen = 0
 	} else {
-		asduLen = len(asdu.ConvertBytes())
+		asduLen = len(asdup.ConvertBytes())
+		asdu = *asdup
 	}
 	t, f, err := ParseCtr(apci)
 	if err != nil {
@@ -32,7 +34,7 @@ func NewAPDU(apci APCI, asdu *elements.ASDU) (APDU, error) {
 	}
 	return APDU{
 		APCI:     apci,
-		ASDU:     *asdu,
+		ASDU:     asdu,
 		Len:      ApciLen + asduLen,
 		ASDULen:  asduLen,
 		CtrType:  t,
