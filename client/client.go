@@ -154,6 +154,7 @@ LOOP:
 	}
 }
 
+// 《DL/T 634.5104-2009》 5.3 采用启/停的传输控制 图18
 func (c Client) init() error {
 	c.Log.Info("IEC104客户端通讯初始化")
 	err := c.stop()
@@ -167,6 +168,7 @@ func (c Client) init() error {
 	return nil
 }
 
+// 《DL/T 634.5104-2009》 5.3 采用启/停的传输控制
 func (c Client) stop() error {
 	uFrame := iec104.UFrame{
 		STOPDT_ACT: true,
@@ -192,6 +194,7 @@ func (c Client) stop() error {
 	return nil
 }
 
+// 《DL/T 634.5104-2009》 5.3 采用启/停的传输控制
 func (c Client) start() error {
 	uFrame := iec104.UFrame{
 		STARTDT_ACT: true,
@@ -217,6 +220,7 @@ func (c Client) start() error {
 	return nil
 }
 
+// 《DL/T 634.5104-2009》 5.2 测试过程
 func (c Client) test() error {
 	uFrame := iec104.UFrame{
 		TESTFR_ACT: true,
@@ -242,6 +246,7 @@ func (c Client) test() error {
 	return nil
 }
 
+// 《DL/T 634.5104-2009》 7.5 总召唤
 func (c Client) totalCall() error {
 	c.mux.Lock()
 	defer c.mux.Unlock()
