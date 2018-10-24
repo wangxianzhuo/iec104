@@ -119,25 +119,30 @@ LOOP:
 	for {
 		select {
 		case resp := <-c.dataChan:
-			c.Log.Debugf("收到原始数据: [%X]", resp.ConvertBytes())
 			switch f := resp.CtrFrame.(type) {
 			case iec104.IFrame:
 				// 处理I帧
-				data, err := handleData(resp)
-				if err != nil {
-					c.Log.Errorf("解析处理I帧异常: %v", err)
-					continue LOOP
+				if resp.ASDU.DUI.TypeIdentification != elements.C_IC_NA_1 || resp.ASDU.DUI.Cause != elements.COT_ACTCON {
+					// 非总召唤确认
+					// 这里可能会有异常
+					c.Log.Debugf("准备解析APDU[%v]浮点数", resp)
+					data, err := handleData(resp)
+					if err != nil {
+						c.Log.Errorf("解析处理I帧异常: %v", err)
+						continue LOOP
+					}
+
+					c.outChan <- data
+					c.Log.Debugf("获得数据: %v", data)
 				}
 
-				c.outChan <- data
-				c.Log.Debugf("获得数据: %v", data)
 				// 响应S帧
 				sFrame := iec104.SFrame{
 					Recv: f.Send + 1,
 				}
 				apci, _ := iec104.NewAPCI(iec104.ApciLen, sFrame)
 				resp, _ := iec104.NewAPDU(apci, nil)
-				_, err = c.conn.Write(resp.ConvertBytes())
+				_, err := c.conn.Write(resp.ConvertBytes())
 				if err != nil {
 					c.Log.Errorf("响应S帧[%v]异常: %v", resp, err)
 					continue LOOP
@@ -154,21 +159,20 @@ LOOP:
 	}
 }
 
-// 《DL/T 634.5104-2009》 5.3 采用启/停的传输控制 图18
 func (c Client) init() error {
 	c.Log.Info("IEC104客户端通讯初始化")
-	err := c.stop()
-	if err != nil {
-		return err
-	}
-	err = c.start()
+	defer c.Log.Info("IEC104客户端通讯初始化结束")
+	// err := c.stop()
+	// if err != nil {
+	// 	return err
+	// }
+	err := c.start()
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-// 《DL/T 634.5104-2009》 5.3 采用启/停的传输控制
 func (c Client) stop() error {
 	uFrame := iec104.UFrame{
 		STOPDT_ACT: true,
@@ -194,7 +198,6 @@ func (c Client) stop() error {
 	return nil
 }
 
-// 《DL/T 634.5104-2009》 5.3 采用启/停的传输控制
 func (c Client) start() error {
 	uFrame := iec104.UFrame{
 		STARTDT_ACT: true,
@@ -220,7 +223,6 @@ func (c Client) start() error {
 	return nil
 }
 
-// 《DL/T 634.5104-2009》 5.2 测试过程
 func (c Client) test() error {
 	uFrame := iec104.UFrame{
 		TESTFR_ACT: true,
@@ -246,10 +248,7 @@ func (c Client) test() error {
 	return nil
 }
 
-// 《DL/T 634.5104-2009》 7.5 总召唤
 func (c Client) totalCall() error {
-	c.mux.Lock()
-	defer c.mux.Unlock()
 	iFrame := iec104.IFrame{
 		Send: 0,
 		Recv: 0,
@@ -262,48 +261,7 @@ func (c Client) totalCall() error {
 	if err != nil {
 		return fmt.Errorf("总召唤发送异常: %v", err)
 	}
-
-	for {
-
-		buf := make([]byte, 1024)
-		n, err := c.conn.Read(buf)
-		if err != nil {
-			return fmt.Errorf("socket读操作异常: %v", err)
-		}
-
-		c.conn.SetDeadline(time.Now().Add(connectDeadline))
-		c.Log.Debugf("下一次超时时间为: %v", time.Now().Add(connectDeadline).Format(time.RFC3339))
-
-		resp, err := iec104.ParseAPDU(buf[:n])
-		if err != nil {
-			return fmt.Errorf("解析APDU异常: %v", err)
-		}
-
-		switch f := resp.CtrFrame.(type) {
-		case iec104.IFrame:
-			if resp.ASDU.DUI.TypeIdentification == elements.C_IC_NA_1 && resp.ASDU.DUI.Cause == elements.COT_ACTCON {
-				// 这里可能会有异常
-				sFrame := iec104.SFrame{
-					Recv: f.Send + 1,
-				}
-				apci, _ := iec104.NewAPCI(iec104.ApciLen, sFrame)
-				resp, _ := iec104.NewAPDU(apci, nil)
-				_, err = c.conn.Write(resp.ConvertBytes())
-				if err != nil {
-					return fmt.Errorf("响应S帧[%v]异常: %v", resp, err)
-				}
-				c.Log.Debugf("响应S帧[%X]", resp.ConvertBytes())
-				return nil
-			} else {
-				c.dataChan <- resp
-				return fmt.Errorf("总召唤激活确认异常")
-			}
-		case iec104.SFrame:
-			c.dataChan <- resp
-		case iec104.UFrame:
-			c.ctrChan <- resp
-		}
-	}
+	return nil
 }
 
 func (c Client) uFrameResp() {
@@ -386,15 +344,18 @@ func (c Client) read() {
 		n, err := c.conn.Read(buf)
 		if err != nil {
 			c.Log.Errorf("socket读操作异常: %v", err)
+			c.mux.Unlock()
 			return
 		}
 
 		c.conn.SetDeadline(time.Now().Add(connectDeadline))
 		c.Log.Debugf("下一次超时时间为: %v", time.Now().Add(connectDeadline).Format(time.RFC3339))
 
+		c.Log.Debugf("收到原始数据: [% X]", buf[:n])
 		apdu, err := iec104.ParseAPDU(buf[:n])
 		if err != nil {
 			c.Log.Warnf("解析APDU异常: %v", err)
+			c.mux.Unlock()
 			continue
 		}
 
@@ -453,20 +414,20 @@ func (c Client) writeUFrame(apdu iec104.APDU) (iec104.APDU, error) {
 func handleData(apdu iec104.APDU) (map[string]float32, error) {
 	switch apdu.ASDU.DUI.TypeIdentification {
 	case elements.M_ME_NC_1:
-		var values map[string]float32
+		values := make(map[string]float32)
 		switch mb := apdu.ASDU.MessageBody.(type) {
 		case elements.MessageElement_13_SQ_1:
 			address := int(mb.Address)
 			for _, e := range mb.Cores {
 				//TODO:考虑QDS
-				values[fmt.Sprint(address)] = e.Value
+				values[fmt.Sprintf("%X", address)] = e.Value
 				address++
 			}
 			return values, nil
 		case elements.MessageElement_13_SQ_0:
 			for _, e := range mb {
 				//TODO:考虑QDS
-				values[fmt.Sprint(int(e.Address))] = e.Core.Value
+				values[fmt.Sprintf("%X", e.Address)] = e.Core.Value
 			}
 			return values, nil
 		default:

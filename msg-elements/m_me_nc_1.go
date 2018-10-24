@@ -2,18 +2,17 @@ package elements
 
 import (
 	"encoding/binary"
-	"fmt"
 	"math"
 )
 
 const (
 	M_ME_NC_1_SQ_1_MSG_LEN = 5
-	M_ME_NC_1_SQ_0_MSG_LEN = 6
+	M_ME_NC_1_SQ_0_MSG_LEN = 8
 )
 
 // MessageElement_13_SQ_1 测量值，短浮点数，《DLT 634.5101-2002》 7.3.1.13 13:M_ME_NC_1，SQ=1的信息元素
 type MessageElement_13_SQ_1 struct {
-	Address byte
+	Address uint32
 	Cores   []MessageElementCore_13
 }
 
@@ -22,17 +21,17 @@ func (e MessageElement_13_SQ_1) ConvertBytes() []byte {
 	for _, c := range e.Cores {
 		cores = append(cores, c.ConvertBytes()...)
 	}
-	return append([]byte{e.Address}, cores...)
+	return append([]byte{byte(e.Address & 0xFF), byte(e.Address >> 8 & 0xFF), byte(e.Address >> 16 & 0xFF)}, cores...)
 }
 
 // MessageElement_13_SQ_0_Ele 测量值，短浮点数，《DLT 634.5101-2002》 7.3.1.13 13:M_ME_NC_1，SQ=0的信息元素
 type MessageElement_13_SQ_0_Ele struct {
-	Address byte
+	Address uint32
 	Core    MessageElementCore_13
 }
 
 func (e MessageElement_13_SQ_0_Ele) ConvertBytes() []byte {
-	return append([]byte{e.Address}, e.Core.ConvertBytes()...)
+	return append([]byte{byte(e.Address & 0xFF), byte(e.Address)}, e.Core.ConvertBytes()...)
 }
 
 type MessageElement_13_SQ_0 []MessageElement_13_SQ_0_Ele
@@ -92,20 +91,21 @@ func (qds QDS) ConvertBytes() []byte {
 }
 
 func parseM_ME_NC_1(asdu []byte, dui DUI) (BytesConverter, error) {
+	// fmt.Printf("解析asdu: % X\n", asdu)
 	sq := dui.VariableStructureQualifier >> 7
 	number := dui.VariableStructureQualifier & 0x7F
 
 	switch sq {
 	case 0:
-		msgBody := asdu[4:len(asdu)]
-		if len(msgBody)/M_ME_NC_1_SQ_0_MSG_LEN != int(number) {
-			return nil, fmt.Errorf("asdu的信息对象[%x]数量[%v]与dui中的数量[%v]不匹配", msgBody, len(msgBody)/M_ME_NC_1_SQ_0_MSG_LEN, number)
-		}
+		size := len(asdu[6:len(asdu)]) / int(number)
+		msgBody := asdu[6:len(asdu)]
 		var elements MessageElement_13_SQ_0
-		for i := 0; i < int(number)*M_ME_NC_1_SQ_0_MSG_LEN; i += M_ME_NC_1_SQ_0_MSG_LEN {
-			address := msgBody[i]
-			value := math.Float32frombits(binary.BigEndian.Uint32(msgBody[i+1 : i+5]))
-			qds := ParseQDS(msgBody[i+5])
+		for i := 0; i < int(number)*size; i += size {
+			// fmt.Printf("msgBody: % X\n", msgBody)
+			address := binary.LittleEndian.Uint32(append([]byte{msgBody[i], msgBody[i+1], msgBody[i+2]}, 0x00))
+			value := math.Float32frombits(binary.LittleEndian.Uint32(msgBody[i+3 : i+7]))
+			// fmt.Printf("raw: %X, value: %v\n", msgBody[i+3:i+7], math.Float32frombits(binary.LittleEndian.Uint32(msgBody[i+3:i+7])))
+			qds := ParseQDS(msgBody[i+7])
 			element := MessageElement_13_SQ_0_Ele{
 				Address: address,
 				Core: MessageElementCore_13{
@@ -117,16 +117,14 @@ func parseM_ME_NC_1(asdu []byte, dui DUI) (BytesConverter, error) {
 		}
 		return elements, nil
 	default:
-		address := asdu[4]
-		msgBody := asdu[5:len(asdu)]
-		if len(msgBody)/M_ME_NC_1_SQ_1_MSG_LEN != int(number) {
-			return nil, fmt.Errorf("asdu的信息对象[%x]数量[%v]与dui中的数量[%v]不匹配", msgBody, len(msgBody)/M_ME_NC_1_SQ_1_MSG_LEN, number)
-		}
+		address := binary.LittleEndian.Uint32(append([]byte{asdu[6], asdu[7], asdu[8]}, 0x00))
+		msgBody := asdu[9:len(asdu)]
+		size := len(asdu[9:len(asdu)]) / int(number)
 		var elements MessageElement_13_SQ_1
 		elements.Address = address
-		for i := 0; i < int(number)*M_ME_NC_1_SQ_1_MSG_LEN; i += M_ME_NC_1_SQ_1_MSG_LEN {
-			value := math.Float32frombits(binary.BigEndian.Uint32(msgBody[i+1 : i+5]))
-			qds := ParseQDS(msgBody[i+5])
+		for i := 0; i < int(number)*size; i += size {
+			value := math.Float32frombits(binary.LittleEndian.Uint32(msgBody[i : i+4]))
+			qds := ParseQDS(msgBody[i+4])
 			core := MessageElementCore_13{
 				Value: value,
 				QDS:   qds,

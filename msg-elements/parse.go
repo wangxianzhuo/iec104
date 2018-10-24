@@ -47,7 +47,11 @@ func parseDUI(asdu []byte) (DUI, error) {
 	case M_ME_NC_1:
 		dui.VariableStructureQualifier = asdu[1]
 		dui.Cause = asdu[2]
-		dui.PublicAddressLow = asdu[3]
+		dui.CauseExt = asdu[3]
+		dui.CauseExtEnable = true
+		dui.PublicAddressLow = asdu[4]
+		dui.PublicAddressHig = asdu[5]
+		dui.PublicAddressHigEnable = true
 	}
 	return dui, nil
 }
