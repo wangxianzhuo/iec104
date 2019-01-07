@@ -24,4 +24,12 @@ func Test_Parse(t *testing.T) {
 	}
 	fmt.Println(asdu2)
 	fmt.Println(len(asdu2.MessageBody.(MessageElement_9_SQ_0)))
+
+	ins3, _ := hex.DecodeString("098A01000100014000000000000000BE4E000000000000004C0D003D0000000000F20200000000")
+	asdu3, err := ParseASDU(ins3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println(asdu3)
+	// fmt.Println(len(asdu3.MessageBody.(MessageElement_9_SQ_0)))
 }
