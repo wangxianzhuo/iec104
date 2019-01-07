@@ -22,6 +22,12 @@ func ParseASDU(asdu []byte) (ASDU, error) {
 		if err != nil {
 			return ASDU{}, fmt.Errorf("解析asdu[%X]的messageBody异常: %v", asdu, err)
 		}
+	case M_ME_NA_1:
+		var err error
+		messageBody, err = parseM_ME_NA_1(asdu, dui)
+		if err != nil {
+			return ASDU{}, fmt.Errorf("解析asdu[%X]的messageBody异常: %v", asdu, err)
+		}
 	case C_IC_NA_1:
 		messageBody = parseC_IC_NA_1(asdu)
 	default:
@@ -52,6 +58,14 @@ func parseDUI(asdu []byte) (DUI, error) {
 		dui.PublicAddressLow = asdu[4]
 		dui.PublicAddressHig = asdu[5]
 		dui.PublicAddressHigEnable = true
+	case M_ME_NA_1:
+		dui.VariableStructureQualifier = asdu[1]
+		dui.Cause = asdu[2]
+		dui.CauseExt = asdu[3]
+		dui.CauseExtEnable = true
+		dui.PublicAddressLow = asdu[4]
+		dui.PublicAddressHig = asdu[5]
+		dui.PublicAddressHigEnable = true
 	}
 	return dui, nil
 }
@@ -59,6 +73,8 @@ func parseDUI(asdu []byte) (DUI, error) {
 func parseDUITypeIdentification(t byte) (byte, error) {
 	switch t {
 	case M_ME_NC_1:
+		return t, nil
+	case M_ME_NA_1:
 		return t, nil
 	case C_IC_NA_1:
 		return t, nil
