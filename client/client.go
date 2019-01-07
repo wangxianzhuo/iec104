@@ -433,6 +433,26 @@ func handleData(apdu iec104.APDU) (map[string]float32, error) {
 		default:
 			return nil, fmt.Errorf("未知信息元素类型[%T]", mb)
 		}
+	case elements.M_ME_NA_1:
+		values := make(map[string]float32)
+		switch mb := apdu.ASDU.MessageBody.(type) {
+		case elements.MessageElement_9_SQ_1:
+			address := int(mb.Address)
+			for _, e := range mb.Cores {
+				//TODO:考虑QDS
+				values[fmt.Sprintf("%X", address)] = float32(e.Value)
+				address++
+			}
+			return values, nil
+		case elements.MessageElement_9_SQ_0:
+			for _, e := range mb {
+				//TODO:考虑QDS
+				values[fmt.Sprintf("%X", e.Address)] = float32(e.Core.Value)
+			}
+			return values, nil
+		default:
+			return nil, fmt.Errorf("未知信息元素类型[%T]", mb)
+		}
 	default:
 		return nil, fmt.Errorf("未支持ASDU类型: %v", apdu.ASDU.DUI.TypeIdentification)
 	}
